@@ -30,20 +30,17 @@ def draw_boxes_on_image(input_image, boxes_list, color="red"):
     for box in boxes_list:
         image = input_image.copy()
         draw = ImageDraw.Draw(image)
-        
-        # Calculate line thickness based on image dimensions
+
         width, height = image.size
         image_diagonal = (width**2 + height**2)**0.5
-        line_thickness = max(1, int(image_diagonal * 1 / 500))  # Adaptive line thickness
+        line_thickness = max(1, int(image_diagonal * 1 / 500))
         
-        # Convert color string to RGB if needed
         if isinstance(color, str):
             try:
                 color = ImageColor.getrgb(color)
             except:
-                color = (255, 0, 0)  # Default to red if color name is invalid
+                color = (255, 0, 0)
         
-        # Draw boxes
         x, y, w, h = box
         if x > 5:
             x = x - 5
@@ -101,7 +98,6 @@ def print_cuda_memory_summary(device=None):
     reserved_memory = torch.cuda.memory_reserved(device)
     free_memory = total_memory - allocated_memory
 
-    # Define the width of the left column for alignment
     col_width = 20
 
     log_info("============================")

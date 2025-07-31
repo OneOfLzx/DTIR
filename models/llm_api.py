@@ -9,9 +9,9 @@ VOLCENGINE_API_KEY = ""
 GPT_API_KEY = ""
 QWEN_API_KEY = ""
 
-OPENAI_BASE_URL = "https://api.openai.com/v1"
-VOLCENGINE_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
-QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+OPENAI_BASE_URL = ""
+VOLCENGINE_BASE_URL = ""
+QWEN_BASE_URL = ""
 
 MODEL_CONFIG = {
     "gpt": {

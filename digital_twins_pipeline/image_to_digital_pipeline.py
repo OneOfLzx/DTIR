@@ -23,7 +23,6 @@ from models.depth_any_thing import DepthAnythingWrapper
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Union, Any
 from models.internvl import InternVLWrapper
-import open_clip
 from PIL import Image
 import torch.nn.functional as F
 
@@ -63,8 +62,6 @@ class SemanticInfo:
     id: int
     box: List[int]
     description: str
-    is_person: bool
-    re_id: List[float] = None
 
 
 
@@ -74,7 +71,6 @@ MAX_OWLVIT_OBJECT_NUM = 20
 OWLVIT_OBJECT_BOX_AREA_THRESHOLD = 0.0
 MAX_SAM_BATCH_SIZE = 20
 MAX_QWENVL_BATCH_NUM = 2
-MAX_CLIP_BATCH_SIZE = 32
 GLOBAL_SEMANTIC_MAX_NEW_TOKENS = 4096
 CAPTION_PROMPT = \
 '''
@@ -134,8 +130,12 @@ Environment: <detailed environment information>
 '''
 
 class ImageToDigitalTwinsPipeline:
-    def __init__(self, device="cuda"):
+    def __init__(self, device="cuda", owlvit_checkpoint_path=None, depth_anything_checkpoint_path=None, sam_config_path=None, sam_checkpoint_path=None):
         self.device = device
+        self.owlvit_checkpoint_path = owlvit_checkpoint_path
+        self.depth_anything_checkpoint_path = depth_anything_checkpoint_path
+        self.sam_config_path = sam_config_path
+        self.sam_checkpoint_path = sam_checkpoint_path
 
     def image_to_digital_twins(self, img_path_list, dt_dir):
         """
@@ -277,9 +277,7 @@ class ImageToDigitalTwinsPipeline:
                     'box': [int(x), int(y), int(w), int(h)],
                     'area': 0,
                     'description': "",
-                    'is_person': False,
                     'depth': 0.0,
-                    're_id': None
                 }
                 
                 # Add mask information if available
@@ -291,7 +289,6 @@ class ImageToDigitalTwinsPipeline:
                 semantic_info = semantic_map.get(box_idx)
                 if semantic_info:
                     obj_info['description'] = semantic_info.description
-                    obj_info['is_person'] = semantic_info.is_person
                 
                 # Calculate depth if available
                 if depth_tensor is not None and mask_info and mask_info.mask is not None:
@@ -614,7 +611,6 @@ class ImageToDigitalTwinsPipeline:
                     'id': int(sem.id),
                     'box': [int(x) for x in sem.box],
                     'description': sem.description,
-                    'is_person': sem.is_person
                 } for sem in semantics
             ]
         }
@@ -648,7 +644,6 @@ class ImageToDigitalTwinsPipeline:
                 id=int(semantic_data['id']),
                 box=[int(x) for x in semantic_data['box']],
                 description=semantic_data['description'],
-                is_person=semantic_data['is_person']
             )
             semantics_list.append(sem_info)
         
@@ -708,7 +703,7 @@ class ImageToDigitalTwinsPipeline:
             
         # Initialize model once for all images
         owl_vit = OWLVitWrapper(
-            "/root/autodl-tmp/owlvit_demo/checkpoint/owl2-l14-1008-st-ngrams-ft-lvisbase-ens-cold-weight-04_8ca674c",
+            self.owlvit_checkpoint_path,
             device
         )
         
@@ -769,7 +764,7 @@ class ImageToDigitalTwinsPipeline:
         # Initialize model once for all images
         depth_model = DepthAnythingWrapper(
             "vitl", 
-            "/root/autodl-tmp/Depth-Anything-V2/checkpoints/depth_anything_v2_vitl.pth",
+            self.depth_anything_checkpoint_path,
             device
         )
         
@@ -807,8 +802,8 @@ class ImageToDigitalTwinsPipeline:
         
         # Initialize model once for all images
         sam_wrapper = SAMWrapper(
-            "configs/sam2.1/sam2.1_hiera_l.yaml", 
-            "/root/autodl-tmp/sam2/checkpoints/sam2.1_hiera_large.pt",
+            self.sam_config_path,
+            self.sam_checkpoint_path,
             device
         )
         
@@ -975,7 +970,6 @@ class ImageToDigitalTwinsPipeline:
                         continue
                         
                     semantic = "Nothing"
-                    is_person = False
                     
                     match_semantic = re.search(r'\[Semantic\]:\s*(.*)', model_output)
                     if match_semantic:
@@ -983,21 +977,14 @@ class ImageToDigitalTwinsPipeline:
                     else:
                         log_info(f"No match semantic format, model output text: {model_output}")
                     
-                    match_is_person = re.search(r'\[Is_Person\]:\s*(.*?)(?:\\n|$|\'|\"|\])', model_output)
-                    if match_is_person:
-                        is_person = (match_is_person.group(1).lower() == "true")
-                    else:
-                        log_verbose(f"No match Is_Person format, model output text: {model_output}")
-                    
                     sem_info = SemanticInfo(
                         id=i + j,
                         box=[int(x) for x in boxes[i + j]],
                         description=semantic,
-                        is_person=is_person
                     )
                     obj_semantics.append(sem_info)
                     
-                    log_verbose(f"Get semantic for object[{i + j}], Is_Person: {is_person}, Semantic: {semantic}")
+                    log_verbose(f"Get semantic for object[{i + j}],Semantic: {semantic}")
             
             # Save semantics to file
             self._save_semantics_to_file(img_path, boxes, obj_semantics, semantic_dir, "semantic")
@@ -1130,11 +1117,12 @@ class ImageToDigitalTwinsPipeline:
         qwenvl = QWenVLWrapper("Qwen/Qwen2.5-VL-7B-Instruct", device)
         
         for i in range(0, len(img_path_list), MAX_QWENVL_BATCH_NUM):
-            log_str_list = [""] * MAX_QWENVL_BATCH_NUM
             batch_images_list = img_path_list[i:i + MAX_QWENVL_BATCH_NUM]
+            batch_size = len(batch_images_list)
+            log_str_list = [""] * batch_size
             batch_images = []
-            history_list = [[] for _ in range(MAX_QWENVL_BATCH_NUM)]
-            semantic_list = [""] * MAX_QWENVL_BATCH_NUM
+            history_list = [[] for _ in range(batch_size)]
+            semantic_list = [""] * batch_size
             for idx, img_path in enumerate(batch_images_list):
                 pil_image, _ = load_image(img_path)
                 batch_images.append(pil_image)

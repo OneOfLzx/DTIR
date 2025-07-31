@@ -15,13 +15,14 @@ from models.llm_api import LlmAPIWrapper
 
 
 MAX_SUB_PROCESS_TIMEOUTT = 300
-COARSELY_THREAD_POOL_NUM = 60
-RANK_THREAD_POOL_NUM = 30
+COARSELY_THREAD_POOL_NUM = 3
+RANK_THREAD_POOL_NUM = 3
 LLM_TEMPERATURE = 0.0
 FOCUS_SCORE_WEIGHT = 0.3
 SEMANTIC_SCORE_WEIGHT = 0.7
 COARSELY_TOP_X_FILTER_NUM = 20
 MAX_RANK_NUM = COARSELY_TOP_X_FILTER_NUM
+MAX_OBJECT_RETRIEVAL_NUM = 5
 MAX_MISSING_ATTRIBUTE_VALUE_STRING_LENGTH = 100
 COARSELY_LLM_SYS_PROMPT =\
 '''
@@ -343,9 +344,9 @@ class LLMRetrieval:
     def __init__(self):
         pass
 
-    def process_coarsely_retrieval_task(self, task, image_digital_twins_info_map):
+    def process_coarsely_retrieval_task(self, task, image_digital_twins_info_map, scoring_llm_provider, scoring_llm_model):
         start_time = time.time()
-        llm_model = LlmAPIWrapper(provider="doubao")
+        llm_model = LlmAPIWrapper(provider=scoring_llm_provider, model=scoring_llm_model)
 
         question = task['query']
         img_idx = task['img_idx']
@@ -413,10 +414,11 @@ class LLMRetrieval:
             'image_path': image_path,
             'focus_score': focus_score,
             'semantic_score': semantic_score,
-            'total_score': total_score
+            'total_score': total_score,
+            'score_explanation': output_text
         }
 
-    def get_coarsely_answer(self, question_list, image_path_list, image_digital_twins_info_map):
+    def get_coarsely_answer(self, question_list, image_path_list, image_digital_twins_info_map, scoring_llm_provider, scoring_llm_model):
         coarsely_results = []
         
         for q_idx, question in enumerate(question_list):
@@ -438,7 +440,7 @@ class LLMRetrieval:
             
             with concurrent.futures.ThreadPoolExecutor(max_workers=COARSELY_THREAD_POOL_NUM) as executor:
                 future_to_task = {
-                    executor.submit(self.process_coarsely_retrieval_task, task, image_digital_twins_info_map): task
+                    executor.submit(self.process_coarsely_retrieval_task, task, image_digital_twins_info_map, scoring_llm_provider, scoring_llm_model): task
                     for task in thread_pool_tasks
                 }
                 
@@ -470,7 +472,8 @@ class LLMRetrieval:
                         'image_path': result['image_path'],
                         'focus_score': result['focus_score'],
                         'semantic_score': result['semantic_score'],
-                        'total_score': result['total_score']
+                        'total_score': result['total_score'],
+                        'score_explanation': result['score_explanation']
                     } for result in top_results
                 ]
             }
@@ -478,10 +481,10 @@ class LLMRetrieval:
 
         return coarsely_results
 
-    def processing_rank_retrieval_answers(self, task, image_digital_twins_info_map):
+    def processing_rank_retrieval_answers(self, task, image_digital_twins_info_map, ranking_llm_provider, ranking_llm_model):
         start_time = time.time()
 
-        llm_model = LlmAPIWrapper(provider="deepseek")
+        llm_model = LlmAPIWrapper(provider=ranking_llm_provider, model=ranking_llm_model)
         query = task['query']
         answers_original = task['answers']
         ranked_result = []
@@ -559,10 +562,11 @@ class LLMRetrieval:
         log_verbose(log_str)
         return {
             'query': query,
-            'answers': ranked_result
+            'answers': ranked_result,
+            'rank_explanation': output_text
         }
 
-    def get_rank_answer(self, retrieval_answer, image_digital_twins_info_map):
+    def get_rank_answer(self, retrieval_answer, image_digital_twins_info_map, ranking_llm_provider, ranking_llm_model):
         log_info("Starting parallel ranking of answers")
         ranked_answer = []
 
@@ -577,7 +581,7 @@ class LLMRetrieval:
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=RANK_THREAD_POOL_NUM) as executor:
             future_to_task = {
-                executor.submit(self.processing_rank_retrieval_answers, task, image_digital_twins_info_map): task
+                executor.submit(self.processing_rank_retrieval_answers, task, image_digital_twins_info_map, ranking_llm_provider, ranking_llm_model): task
                 for task in thread_pool_tasks
             }
             for future in concurrent.futures.as_completed(future_to_task):
@@ -585,7 +589,8 @@ class LLMRetrieval:
                     result = future.result()
                     ranked_answer.append({
                         'query': result['query'],
-                        'answers': result['answers']
+                        'rank_explanation': result['rank_explanation'],
+                        'answers': result['answers'],
                     })
                 except Exception as e:
                     # If ranking fails, use the original unranked answers
@@ -594,7 +599,8 @@ class LLMRetrieval:
                     answers = task['answers']
                     ranked_answer.append({
                         'query': query,
-                        'answers': answers
+                        'rank_explanation': "",
+                        'answers': answers,
                     })
                     log_info(f"[Error] Final answer processing task failed for query '{task['query']}': {str(e)}")
                     
@@ -755,12 +761,12 @@ class LLMRetrieval:
         log_str += "="*50 + "\n"
         log_info(log_str)
             
-        return relevant_object_ids
+        return relevant_object_ids, output_text
 
-    def object_retrieval(self, question, image_path, dt_dir, output_dir):
-        llm_model = LlmAPIWrapper(provider="deepseek")
+    def object_retrieval(self, question, image_path, dt_dir, object_retrieval_llm_provider, object_retrieval_llm_model):
+        llm_model = LlmAPIWrapper(provider=object_retrieval_llm_provider, model=object_retrieval_llm_model)
         
-        log_info(f"Object retrieval, question: {question}, image_path: {image_path}, dt_dir: {dt_dir}, output_dir: {output_dir}")
+        log_info(f"Object retrieval, question: {question}, image_path: {image_path}, dt_dir: {dt_dir}, llm_provider: {object_retrieval_llm_provider}, llm_model: {object_retrieval_llm_model}")
 
         dt_loader = DigitalTwinsLoader()
         image_name = Path(image_path).stem
@@ -797,10 +803,10 @@ class LLMRetrieval:
                 else:
                     log_info(f"[Error]Exec python code failed, query: {question}, image_path: {image_path}")
 
-        relevant_object_ids = self.get_object_relevant_ids(llm_model, question, digital_twins_info, image_info, is_missing_attribute, missing_attribute_name, missing_attribute_description, missing_attribute_disc)
+        relevant_object_ids, explanation = self.get_object_relevant_ids(llm_model, question, digital_twins_info, image_info, is_missing_attribute, missing_attribute_name, missing_attribute_description, missing_attribute_disc)
         llm_model.clear_history()
 
-        return relevant_object_ids
+        return relevant_object_ids, explanation
 
     def retrieval(
             self,
@@ -808,14 +814,21 @@ class LLMRetrieval:
             image_path_list,
             dt_dir,
             output_dir,
-            scoring_answer_json_path
+            scoring_llm_provider,
+            scoring_llm_model,
+            ranking_llm_provider,
+            ranking_llm_model,
+            object_retrieval_llm_provider,
+            object_retrieval_llm_model
         ):
         # Load digital twins for all images
         image_digital_twins_info_map = {}
+        image_digital_twins_info_map_coarse = {}
         dt_loader = DigitalTwinsLoader()
         for image_path in image_path_list:
             image_name = Path(image_path).stem
             dt_path = os.path.join(dt_dir, image_name + ".json")
+            dt_path_coarse = os.path.join(dt_dir, image_name + "_coarse_grained.json")
             dt_mask_path = os.path.join(dt_dir, image_name + "_mask.json")
 
             if os.path.exists(dt_path) and os.path.exists(dt_mask_path):
@@ -823,6 +836,12 @@ class LLMRetrieval:
                 image_digital_twins_info_map[image_path] = {
                     'digital_twins_info': digital_twins_info,
                     'image_info': image_info
+                }
+            if os.path.exists(dt_path_coarse) and os.path.exists(dt_mask_path):
+                digital_twins_info_coarse, image_info_coarse = dt_loader.load_digital_twins(dt_path_coarse, dt_mask_path, False)
+                image_digital_twins_info_map_coarse[image_path] = {
+                    'digital_twins_info': digital_twins_info_coarse,
+                    'image_info': image_info_coarse
                 }
         if len(image_path_list) == len(image_digital_twins_info_map):
             log_info(f"Load digital twins for all images, total images: {len(image_path_list)}, images list: {image_path_list}")
@@ -834,54 +853,73 @@ class LLMRetrieval:
             raise RuntimeError(error_message)
 
         # Coarsely retrieval
-        coarsely_retrieval_answer = []
-        if os.path.exists(scoring_answer_json_path) == False or scoring_answer_json_path == "None":
-            log_info("Start coarsely retrieval")
-            coarsely_retrieval_answer = self.get_coarsely_answer(
-                question_list,
-                image_path_list,
-                image_digital_twins_info_map
-            )
-            log_info("Coarsely retrieval done")
-            with open(os.path.join(output_dir, "scoring_answer.json"), 'w', encoding='utf-8') as f:
-                json.dump(coarsely_retrieval_answer, f, ensure_ascii=False, indent=2)
-        else:
-            log_info("Load coarsely retrieval answer from file")
-            with open(scoring_answer_json_path, 'r') as f:
-                coarsely_retrieval_answer = json.load(f)
+        log_info("Start coarsely retrieval")
+        coarsely_retrieval_answer = self.get_coarsely_answer(
+            question_list,
+            image_path_list,
+            image_digital_twins_info_map_coarse,
+            scoring_llm_provider,
+            scoring_llm_model
+        )
+        with open(os.path.join(output_dir, "scoring_answers.json"), 'w', encoding='utf-8') as f:
+            json.dump(coarsely_retrieval_answer, f, ensure_ascii=False, indent=2)
+        log_info("Coarsely retrieval done")
 
         # Get ranked answers
         log_info("Start ranking answers")
-        ranked_answers = self.get_rank_answer(coarsely_retrieval_answer, image_digital_twins_info_map)
-        with open(os.path.join(output_dir, "ranked_answers.json"), 'w', encoding='utf-8') as f:
+        ranked_answers = self.get_rank_answer(coarsely_retrieval_answer, image_digital_twins_info_map, ranking_llm_provider, ranking_llm_model)
+        with open(os.path.join(output_dir, "ranking_answers.json"), 'w', encoding='utf-8') as f:
             json.dump(ranked_answers, f, ensure_ascii=False, indent=2)
         log_info("Ranking answers done")
+
+        # Get object retrieval answers
+        log_info("Start object retrieval")
+        object_retrieval_answers = []
+        for item in ranked_answers:
+            question = item['query']
+            answers = item['answers']
+            query_obj_answers = []
+            for ans in answers[:MAX_OBJECT_RETRIEVAL_NUM]:
+                image_path = ans['image_path']
+                object_retrieval_answer, explanation = self.object_retrieval(question, image_path, dt_dir, object_retrieval_llm_provider, object_retrieval_llm_model)
+                ans['object_retrieval_answer'] = object_retrieval_answer
+                ans['object_retrieval_explanation'] = explanation
+                query_obj_answers.append(ans)
+            object_retrieval_answers.append({
+                'query': question,
+                'answers': query_obj_answers
+            })
+        with open(os.path.join(output_dir, "object_retrieval_answers.json"), 'w', encoding='utf-8') as f:
+            json.dump(object_retrieval_answers, f, ensure_ascii=False, indent=2)
+        log_info("Object retrieval done")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--query_json_path', type=str)
+    parser.add_argument('--query_info', type=str)
+    parser.add_argument('--image_dir', type=str)
     parser.add_argument('--dt_dir', type=str)
     parser.add_argument('--output_dir', type=str)
-    parser.add_argument('--coarsely_answer_json_path', type=str, default=None)
+    parser.add_argument('--scoring_llm_provider', type=str)
+    parser.add_argument('--scoring_llm_model', type=str)
+    parser.add_argument('--ranking_llm_provider', type=str)
+    parser.add_argument('--ranking_llm_model', type=str)
+    parser.add_argument('--object_retrieval_llm_provider', type=str)
+    parser.add_argument('--object_retrieval_llm_model', type=str)
     args = parser.parse_args()
-
-    # Extract image paths from query_json_path
-    image_path_list = []
-    with open(args.query_json_path, 'r') as f:
-        query_data = json.load(f)
-    for item in query_data:
-        image_path_list.append(item['image_path'])
 
     os.makedirs(args.output_dir, exist_ok=True)
     set_log_level(True)
 
+    # Extract image paths from query_json_path
+    image_path_list = []
     question_list = []
-    with open(args.query_json_path, 'r') as f:
-        example_list = json.load(f)
-    for example in example_list:
-        for query in example['caption']:
-            question_list.append(query)
+    with open(args.query_info, 'r') as f:
+        query_data = json.load(f)
+    for item in query_data:
+        image_path_list.append(os.path.join(args.image_dir, item['image']))
+        for question in item['caption']:
+            question_list.append(question)
 
     log_info(f"Question list len: {len(question_list)}, list: {question_list}")
     log_info(f"Image list len: {len(image_path_list)}, list: {image_path_list}")
@@ -892,5 +930,10 @@ if __name__ == '__main__':
         image_path_list,
         args.dt_dir,
         args.output_dir,
-        args.coarsely_answer_json_path
+        args.scoring_llm_provider,
+        args.scoring_llm_model,
+        args.ranking_llm_provider,
+        args.ranking_llm_model,
+        args.object_retrieval_llm_provider,
+        args.object_retrieval_llm_model
     )

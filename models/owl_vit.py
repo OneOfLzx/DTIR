@@ -1,6 +1,5 @@
 import sys
 import torch
-sys.path.append('/root/autodl-tmp/big_vision')
 
 import jax
 import functools

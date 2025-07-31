@@ -1,12 +1,10 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import os
 import json
 import argparse
 from pathlib import Path
+from utils.log import log_info
 
-INVALID_OBJECT_NUM = 10
+INVALID_OBJECT_NUM = 0
 
 def check_dt_validity(test_info_path, dt_dir):
     """
@@ -25,7 +23,7 @@ def check_dt_validity(test_info_path, dt_dir):
         test_info = json.load(f)
     
     total_images = len(test_info)
-    print(f"Total images in test_info: {total_images}")
+    log_info(f"Total images in test_info: {total_images}")
     
     # Statistics
     stats = {
@@ -49,13 +47,12 @@ def check_dt_validity(test_info_path, dt_dir):
     
     # Check each image
     for idx, item in enumerate(test_info):
-        image_path = item["image_path"]
-        image_name = os.path.basename(image_path)
+        image_name = item["image"]
         image_name_without_ext = os.path.splitext(image_name)[0]
         
         # Get DT paths
         dt_path = os.path.join(dt_dir, f"{image_name_without_ext}.json")
-        coarse_dt_path = os.path.join(dt_dir, f"{image_name_without_ext}.json") #os.path.join(dt_dir, f"{image_name_without_ext}_coarse_grained.json")
+        coarse_dt_path = os.path.join(dt_dir, f"{image_name_without_ext}_coarse_grained.json")
         mask_json_path = os.path.join(dt_dir, f"{image_name_without_ext}_mask.json")
         
         is_valid = True
@@ -64,19 +61,19 @@ def check_dt_validity(test_info_path, dt_dir):
         if not os.path.exists(dt_path):
             stats["missing_normal_dt"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Missing normal DT: {dt_path}")
+            log_info(f"Missing normal DT: {dt_path}")
             is_valid = False
         
         if not os.path.exists(coarse_dt_path):
             stats["missing_coarse_dt"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Missing coarse DT: {coarse_dt_path}")
+            log_info(f"Missing coarse DT: {coarse_dt_path}")
             is_valid = False
         
         if not os.path.exists(mask_json_path):
             stats["missing_mask_json"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Missing mask JSON: {mask_json_path}")
+            log_info(f"Missing mask JSON: {mask_json_path}")
             is_valid = False
         
         # If any file is missing, continue to the next image
@@ -95,59 +92,49 @@ def check_dt_validity(test_info_path, dt_dir):
                 mask_data = json.load(f)
         except Exception as e:
             stats["errors"].append(f"Error loading files for {image_name}: {str(e)}")
-            print(f"Error loading files for {image_name}: {str(e)}")
+            log_info(f"Error loading files for {image_name}: {str(e)}")
             continue
         
         # Check if normal DT has at least INVALID_OBJECT_NUM objects
         if len(dt_data.get("objects_info", [])) < INVALID_OBJECT_NUM:
             stats["insufficient_objects"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Insufficient objects in {dt_path}: found {len(dt_data.get('objects_info', []))}, need at least {INVALID_OBJECT_NUM}")
+            log_info(f"Insufficient objects in {dt_path}: found {len(dt_data.get('objects_info', []))}, need at least {INVALID_OBJECT_NUM}")
             
         # Check normal DT for empty fields
         if dt_data.get("image_info", {}).get("semantic", "") == "":
             stats["empty_image_semantic"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Empty image semantic in {dt_path}")
+            log_info(f"Empty image semantic in {dt_path}")
         
         if dt_data.get("image_info", {}).get("caption", "") == "":
             stats["empty_image_caption"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Empty image caption in {dt_path}")
-
-        if dt_data.get("image_info", {}).get("image_embedding", []) == []:
-            stats["empty_image_embedding"] += 1
-            stats["invalid_images"].add(image_name)
-            print(f"Empty image embedding in {dt_path}")
+            log_info(f"Empty image caption in {dt_path}")
 
         for obj in dt_data.get("objects_info", []):
             if obj.get("description", "") == "":
                 stats["empty_object_description"] += 1
                 stats["invalid_images"].add(image_name)
-                print(f"Empty object description: obj_id={obj.get('id')} in {dt_path}")
+                log_info(f"Empty object description: obj_id={obj.get('id')} in {dt_path}")
                 break
         
         # Check coarse DT for empty fields
         if coarse_dt_data.get("image_info", {}).get("semantic", "") == "":
             stats["empty_image_semantic"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Empty image semantic in {coarse_dt_path}")
+            log_info(f"Empty image semantic in {coarse_dt_path}")
         
         if coarse_dt_data.get("image_info", {}).get("caption", "") == "":
             stats["empty_image_caption"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Empty image caption in {coarse_dt_path}")
-        
-        if dt_data.get("image_info", {}).get("image_embedding", []) == []:
-            stats["empty_image_embedding"] += 1
-            stats["invalid_images"].add(image_name)
-            print(f"Empty image embedding in {dt_path}")
+            log_info(f"Empty image caption in {coarse_dt_path}")
 
         for obj in coarse_dt_data.get("objects_info", []):
             if obj.get("description", "") == "":
                 stats["empty_object_description"] += 1
                 stats["invalid_images"].add(image_name)
-                print(f"Empty object description: obj_id={obj.get('id')} in {coarse_dt_path}")
+                log_info(f"Empty object description: obj_id={obj.get('id')} in {coarse_dt_path}")
                 break
         
         # 1. Check if coarse DT semantic and caption match normal DT
@@ -156,14 +143,14 @@ def check_dt_validity(test_info_path, dt_dir):
         if normal_semantic != coarse_semantic:
             stats["inconsistent_semantic"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Inconsistent semantic between normal and coarse DT for {image_name}")
+            log_info(f"Inconsistent semantic between normal and coarse DT for {image_name}")
         
         normal_caption = dt_data.get("image_info", {}).get("caption", "")
         coarse_caption = coarse_dt_data.get("image_info", {}).get("caption", "")
         if normal_caption != coarse_caption:
             stats["inconsistent_caption"] += 1
             stats["invalid_images"].add(image_name)
-            print(f"Inconsistent caption between normal and coarse DT for {image_name}")
+            log_info(f"Inconsistent caption between normal and coarse DT for {image_name}")
         
         # 2. Check if coarse DT objects exist in normal DT with same field values
         normal_objects = {obj.get("id"): obj for obj in dt_data.get("objects_info", [])}
@@ -177,7 +164,7 @@ def check_dt_validity(test_info_path, dt_dir):
             fields_to_exclude = set()
             fields_to_check = list(common_fields - fields_to_exclude)
         else:
-            print(f"[Error]: No objects info in {dt_path} or {coarse_dt_path}")
+            log_info(f"[Error]: No objects info in {dt_path} or {coarse_dt_path}")
             fields_to_check = []
         
         for coarse_obj in coarse_dt_data.get("objects_info", []):
@@ -186,7 +173,7 @@ def check_dt_validity(test_info_path, dt_dir):
             if coarse_obj_id not in normal_objects:
                 stats["coarse_obj_not_in_normal"] += 1
                 stats["invalid_images"].add(image_name)
-                print(f"Object ID {coarse_obj_id} in coarse DT not found in normal DT for {image_name}")
+                log_info(f"Object ID {coarse_obj_id} in coarse DT not found in normal DT for {image_name}")
                 continue
             
             normal_obj = normal_objects[coarse_obj_id]
@@ -196,7 +183,7 @@ def check_dt_validity(test_info_path, dt_dir):
                 if coarse_obj.get(field) != normal_obj.get(field):
                     stats["inconsistent_obj_fields"] += 1
                     stats["invalid_images"].add(image_name)
-                    print(f"Inconsistent {field} for object ID {coarse_obj_id} in {image_name}")
+                    log_info(f"Inconsistent {field} for object ID {coarse_obj_id} in {image_name}")
                     break
         
         # 3. Check if all normal DT objects have corresponding masks in mask JSON
@@ -217,19 +204,11 @@ def check_dt_validity(test_info_path, dt_dir):
             if obj_id not in mask_ids:
                 stats["normal_obj_not_in_mask"] += 1
                 stats["invalid_images"].add(image_name)
-                print(f"Object ID {obj_id} in normal DT not found in mask JSON for {image_name}")
-        
-        # 4. Check if the image_embedding in normal DT is the same as the image_embedding in coarse DT
-        normal_image_embedding = dt_data.get("image_info", {}).get("image_embedding", [])
-        coarse_image_embedding = coarse_dt_data.get("image_info", {}).get("image_embedding", [])
-        if normal_image_embedding != coarse_image_embedding:
-            stats["inconsistent_image_embedding"] += 1
-            stats["invalid_images"].add(image_name)
-            print(f"Inconsistent image embedding between normal and coarse DT for {image_name}")
+                log_info(f"Object ID {obj_id} in normal DT not found in mask JSON for {image_name}")
 
         # Print progress
         if (idx + 1) % 100 == 0:
-            print(f"Processed {idx + 1}/{total_images} images")
+            log_info(f"Processed {idx + 1}/{total_images} images")
     
     # Convert set to list for JSON serialization
     stats["invalid_images"] = list(stats["invalid_images"])
@@ -238,66 +217,53 @@ def check_dt_validity(test_info_path, dt_dir):
     return stats
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Check DT validity')
-    parser.add_argument('--query_json_path', type=str, required=True)
-    parser.add_argument('--dt_dir', type=str, required=True)
-    parser.add_argument('--output_dir', type=str)
-    
-    args = parser.parse_args()
-    
+def handle_check_dt_valid(query_json_path, dt_dir):
     # Check if files exist
-    if not os.path.exists(args.query_json_path):
-        print(f"Error: test_info file not found at {args.query_json_path}")
+    if not os.path.exists(query_json_path):
+        log_info(f"Error: test_info file not found at {query_json_path}")
         return
     
-    if not os.path.exists(args.dt_dir):
-        print(f"Error: DT directory not found at {args.dt_dir}")
+    if not os.path.exists(dt_dir):
+        log_info(f"Error: DT directory not found at {dt_dir}")
         return
     
     # Run validation
-    print(f"Checking DT validity...")
-    print(f"Test info: {args.query_json_path}")
-    print(f"DT directory: {args.dt_dir}")
+    log_info(f"Checking DT validity...")
+    log_info(f"Test info: {query_json_path}")
+    log_info(f"DT directory: {dt_dir}")
     
-    stats = check_dt_validity(args.query_json_path, args.dt_dir)
+    stats = check_dt_validity(query_json_path, dt_dir)
     
     # Print summary
-    print("\n===== Summary =====")
-    print(f"Total images: {stats['total_images']}")
-    print(f"Images with empty image semantic: {stats['empty_image_semantic']}")
-    print(f"Images with empty image caption: {stats['empty_image_caption']}")
-    print(f"Images with empty image embedding: {stats['empty_image_embedding']}")
-    print(f"Images with empty object description: {stats['empty_object_description']}")
-    print(f"Images missing normal DT: {stats['missing_normal_dt']}")
-    print(f"Images missing coarse DT: {stats['missing_coarse_dt']}")
-    print(f"Images missing mask JSON: {stats['missing_mask_json']}")
-    print(f"Images with insufficient objects (< {INVALID_OBJECT_NUM}): {stats['insufficient_objects']}")
-    print(f"Images with inconsistent semantic: {stats['inconsistent_semantic']}")
-    print(f"Images with inconsistent caption: {stats['inconsistent_caption']}")
-    print(f"Images with coarse objects not in normal DT: {stats['coarse_obj_not_in_normal']}")
-    print(f"Images with inconsistent object fields: {stats['inconsistent_obj_fields']}")
-    print(f"Images with normal objects not in mask: {stats['normal_obj_not_in_mask']}")
-    print(f"Total invalid images: {stats['total_invalid_images']}")
-    print(f"Total errors: {len(stats['errors'])}")
+    log_info("\n===== Summary =====")
+    log_info(f"Total images: {stats['total_images']}")
+    log_info(f"Images with empty image semantic: {stats['empty_image_semantic']}")
+    log_info(f"Images with empty image caption: {stats['empty_image_caption']}")
+    log_info(f"Images with empty image embedding: {stats['empty_image_embedding']}")
+    log_info(f"Images with empty object description: {stats['empty_object_description']}")
+    log_info(f"Images missing normal DT: {stats['missing_normal_dt']}")
+    log_info(f"Images missing coarse DT: {stats['missing_coarse_dt']}")
+    log_info(f"Images missing mask JSON: {stats['missing_mask_json']}")
+    log_info(f"Images with insufficient objects (< {INVALID_OBJECT_NUM}): {stats['insufficient_objects']}")
+    log_info(f"Images with inconsistent semantic: {stats['inconsistent_semantic']}")
+    log_info(f"Images with inconsistent caption: {stats['inconsistent_caption']}")
+    log_info(f"Images with coarse objects not in normal DT: {stats['coarse_obj_not_in_normal']}")
+    log_info(f"Images with inconsistent object fields: {stats['inconsistent_obj_fields']}")
+    log_info(f"Images with normal objects not in mask: {stats['normal_obj_not_in_mask']}")
+    log_info(f"Total invalid images: {stats['total_invalid_images']}")
+    log_info(f"Total errors: {len(stats['errors'])}")
     
 
-    with open(args.query_json_path, "r") as f:
+    with open(query_json_path, "r") as f:
         test_info = json.load(f)
 
-    with open(os.path.join(args.output_dir, "invalid_images.txt"), "w", encoding="utf-8") as f:
-        for img_name in stats["invalid_images"]:
-            for item in test_info:
-                if os.path.basename(item["image_path"]) == img_name:
-                    f.write(item["image_path"] + "\n")
-                    break
+    invalid_images = []
+    for img_name in stats["invalid_images"]:
+        for item in test_info:
+            if item["image"] == img_name:
+                invalid_images.append(item["image"])
+                break
 
-    # Save report
-    with open(os.path.join(args.output_dir, "check_dt_valid.json"), 'w', encoding='utf-8') as f:
-        json.dump(stats, f, ensure_ascii=False, indent=2)
-    
-    print(f"Report saved to {args.output_dir}")
+    log_info(f"Invalid images: {invalid_images}")
+    return invalid_images
 
-
-if __name__ == "__main__":
-    main()
