@@ -22,6 +22,10 @@ pip install -r requirements.txt
 - Depth-Anything 2
 - SAM 2
 
+## RT2I Dataset
+
+The RT2I dataset is located in the `data/RT2I` directory, which contains both image data and reasoning-based queries.
+
 ## Usage
 
 ### Generate DT Representations
