@@ -4,6 +4,18 @@
   <img src="figures/architecture.jpg" alt="Architecture Diagram" width="80%">
 </div>
 
+## RT2I Dataset
+
+The **RT2I** dataset is located in the `data/RT2I` directory, which contains both image data and reasoning-based queries.
+
+```
+data/
+└── RT2I/
+    ├── image.zip
+    └── query_info.json
+```
+
+
 ## Setup
 
 1. Create a Python environment:
@@ -21,10 +33,6 @@ pip install -r requirements.txt
 - OWL-ViT 2
 - Depth-Anything 2
 - SAM 2
-
-## RT2I Dataset
-
-The RT2I dataset is located in the `data/RT2I` directory, which contains both image data and reasoning-based queries.
 
 ## Usage
 
