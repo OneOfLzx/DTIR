@@ -1,4 +1,12 @@
-## Reasoning Text-to-Image Retrieval with Large Language Models and Digital Twin Representations
+<div align="center">
+
+# Reasoning Text-to-Image Retrieval with Large Language Models and Digital Twin Representations
+
+### 📄 Published in **Knowledge-Based Systems (KBS)**, 2026: [Paper Link (Elsevier)](https://authors.elsevier.com/a/1mUOn3OAb9KaUy)
+
+---
+
+</div>
 
 <div align="center">
   <img src="figures/architecture.jpg" alt="Architecture Diagram" width="80%">
@@ -75,3 +83,22 @@ Optional parameters:
 
 API Key:
 - Set API Key for LLMs in `llm_api.py`
+
+## Citation
+
+If you find this work useful in your research, please consider citing:
+
+> **Reasoning Text-to-Image Retrieval with Large Language Models and Digital Twin Representations** > Zexu Lin, Dell Zhang, Yiqing Shen, and Xuelong Li  
+> *Knowledge-Based Systems*, Volume 336, 2026.  
+> [[Paper Link]](https://authors.elsevier.com/a/1mUOn3OAb9KaUy) [[DOI]](https://doi.org/10.1016/j.knosys.2026.115313)
+
+```bibtex
+@article{LIN2026115313,
+  title = {Reasoning text-to-image retrieval with large language models and digital twin representations},
+  journal = {Knowledge-Based Systems},
+  volume = {336},
+  pages = {115313},
+  year = {2026},
+  doi = {10.1016/j.knosys.2026.115313},
+  author = {Zexu Lin and Dell Zhang and Yiqing Shen and Xuelong Li}
+}
