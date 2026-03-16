@@ -2,7 +2,7 @@
 
 # Reasoning Text-to-Image Retrieval with Large Language Models and Digital Twin Representations
 
-### 📄 Published in **Knowledge-Based Systems (KBS)**, 2026: [Paper Link (Elsevier)](https://authors.elsevier.com/a/1mUOn3OAb9KaUy)
+### 📄 Published in **Knowledge-Based Systems (KBS)**, 2026: [Paper Link (Elsevier)](https://www.sciencedirect.com/science/article/abs/pii/S0950705126000572)
 
 ---
 
